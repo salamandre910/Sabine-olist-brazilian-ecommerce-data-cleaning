@@ -1,12 +1,17 @@
+
 # --- Imports ---
 from __future__ import annotations
 
 from pathlib import Path
 import pandas as pd
 
+# ============================================================================================
+
 # --- Constantes ---
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
+
+# ============================================================================================
 
 # --- Fonctions utilitaires ---
 def load_all_csv(raw_dir: Path) -> dict[str, pd.DataFrame]:
@@ -21,10 +26,11 @@ def load_all_csv(raw_dir: Path) -> dict[str, pd.DataFrame]:
         dfs[name] = pd.read_csv(f)
     return dfs
 
-
 def ensure_dirs() -> None:
     """Ensure output directories exist."""
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+# ============================================================================================
 
 # --- Typage des données [Cast_types()] ---
 def cast_types(dfs: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
@@ -92,6 +98,7 @@ def cast_types(dfs: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
         ).astype("Int64")
 
     return dfs
+# ============================================================================================
 
 # --- Sauvegarde des tables dans data/processed ---
 def save_processed_csv(dfs: dict[str, pd.DataFrame], out_dir: Path) -> None:
@@ -101,6 +108,7 @@ def save_processed_csv(dfs: dict[str, pd.DataFrame], out_dir: Path) -> None:
         out_path = out_dir / f"{name}.csv"
         df.to_csv(out_path, index=False)
 
+# ============================================================================================
 
 # --- Fonction principale ---
 def main() -> None:
@@ -111,7 +119,9 @@ def main() -> None:
 
     # 2. Typage des données (IDs, dates, montants)
     dfs = cast_types(dfs)
+
 # ============================================================================================
+    
     # 3. FLAGS QUALITÉ (qc_*) (règles métier, AUCUNE correction)
     orders = dfs["orders"].copy()
 
@@ -150,6 +160,7 @@ def main() -> None:
     dfs["orders"] = orders
 
 # ===============================================================================================
+    
     # 4. Comptage des NaT (diagnostic post-typage)
     date_cols_orders = [
         "order_purchase_timestamp",
@@ -167,6 +178,7 @@ def main() -> None:
     print((nat_orders / len(dfs["orders"]) * 100).round(2))
 
 # =============================================================================================
+    
     # 5. Récapitulatif des flags qualité
     qc_cols = [
         "qc_missing_delivered_customer_date",
@@ -182,12 +194,65 @@ def main() -> None:
     print((dfs["orders"][qc_cols].mean() * 100).round(2))
 
 # ============================================================================================
+
+    # --- 6.a Géolocalisation — dédoublonnage ---
+    geo = dfs["geolocation"].copy()
+
+    geo_dedup = (
+        geo
+        .dropna(subset=[
+            "geolocation_zip_code_prefix",
+            "geolocation_city",
+            "geolocation_state"
+        ])
+        .drop_duplicates(
+            subset=[
+                "geolocation_zip_code_prefix",
+                "geolocation_city",
+                "geolocation_state"
+            ]
+        )
+        .reset_index(drop=True)
+    )
+
+    dfs["geolocation_dedup"] = geo_dedup
+
+    print("\nGeolocation dedup:")
+    print(f"raw rows={len(geo)} | dedup rows={len(geo_dedup)}")
+
+# ============================================================================================
+    
+    # --- 6.b Reviews — canonisation ---
+
+    reviews = dfs["order_reviews"].copy()
+
+    # colonne de tri : réponse si présente, sinon création
+    reviews["_review_ts_for_canon"] = reviews["review_answer_timestamp"].fillna(
+        reviews["review_creation_date"]
+    )
+
+    reviews_canon = (
+        reviews
+        .sort_values("_review_ts_for_canon")
+        .drop_duplicates(subset=["review_id"], keep="last")
+        .drop(columns=["_review_ts_for_canon"])
+        .reset_index(drop=True)
+    )
+
+    dfs["order_reviews_canon"] = reviews_canon
+
+    print("\nOrder reviews canon:")
+    print(f"raw rows={len(reviews)} | canon rows={len(reviews_canon)}")
+
+# ============================================================================================
+    
     # 6. Vérification finale (shapes)
     print("\nTables chargées :")
     for name, df in dfs.items():
         print(f"- {name}: shape={df.shape}")
 
 # ============================================================================================
+    
     # --- Comptage NaT sur les commandes ---
     date_cols_orders = [
         "order_purchase_timestamp",
@@ -228,11 +293,17 @@ def main() -> None:
     for name, df in dfs.items():
         print(f"- {name}: shape={df.shape}")
 
+# ============================================================================================
+
+
+
+# ============================================================================================
 
     # 7. Sauvegarde des tables "processed"
     save_processed_csv(dfs, PROCESSED_DIR)
     print(f"\n✅ Tables sauvegardées dans : {PROCESSED_DIR.resolve()}")
 
+# ============================================================================================
 
 # --- Point d’entrée du script ---
 if __name__ == "__main__":
