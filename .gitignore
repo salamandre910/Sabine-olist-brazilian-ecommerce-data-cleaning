@@ -10,11 +10,19 @@ env/
 data/raw/*.csv
 data/processed/*.csv
 
+# Data layers & SQLite database
+data/bronze/
+data/silver/
+data/gold/
+data/db/*.
+*.sqlite
+db/*.sqlite
+
+
+# Notebooks checkpoints
+**/.ipynb_checkpoints/
+
 # OS
 .DS_Store
 
-# SQLite database
-db/*.sqlite
-*.sqlite
 
-.ipynb_checkpoints/
