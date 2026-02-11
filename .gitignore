@@ -12,3 +12,9 @@ data/processed/*.csv
 
 # OS
 .DS_Store
+
+# SQLite database
+db/*.sqlite
+*.sqlite
+
+.ipynb_checkpoints/
